@@ -3,6 +3,8 @@
 module RubyLLM
   module Providers
     class OpenClaw < Provider
+      include OpenClaw::Chat
+
       VERSION = OpenClawVersion::VERSION
 
       # Error hierarchy
