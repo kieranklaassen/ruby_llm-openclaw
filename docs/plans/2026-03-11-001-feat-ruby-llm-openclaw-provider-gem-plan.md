@@ -30,6 +30,11 @@ origin: docs/brainstorms/2026-03-11-ruby-llm-openclaw-provider-brainstorm.md
 - Base `Provider#initialize` eagerly creates a Faraday `Connection` — must be overridden
 - `StreamAccumulator.to_message(nil)` sets `raw: nil` — acceptable, callers should not depend on `raw`
 - Post-fork safety: connections must be lazily established per-process (Puma `preload_app!`)
+- **Bug**: `model.id` returns `"openclaw/my-agent"` not `"my-agent"` — must strip prefix with `model.id.delete_prefix("openclaw/")`
+- **Naming**: Consider `openclaw_api_base` instead of `openclaw_url` to match RubyLLM convention (`openai_api_base`, `ollama_api_base`, etc.)
+- **Multi-tenant**: Cora integration must use `RubyLLM.context { |c| c.openclaw_url = ... }` for per-connection config (not global singleton)
+- **Unsupported params**: Log warnings when `tools:`, `temperature:`, `schema:`, `thinking:` are passed — OpenClaw handles these server-side
+- **DHH insight**: Consider reusing `ConnectedAccount` with `provider: "openclaw"` instead of creating `OpenclawConnection` — same pattern already exists
 
 ---
 
@@ -341,10 +346,12 @@ module RubyLLM
     class OpenClaw
       module Chat
         def complete(messages, tools:, temperature:, model:, params: {}, headers: {}, schema: nil, thinking: nil, &block)
+          warn_unsupported_params(tools: tools, temperature: temperature, schema: schema, thinking: thinking)
           client = Client.new(@config)
           accumulator = StreamAccumulator.new
+          agent_name = model.id.delete_prefix("openclaw/")
 
-          client.chat_send(render_messages(messages), agent: model.id) do |event_data|
+          client.chat_send(render_messages(messages), agent: agent_name) do |event_data|
             chunk = build_chunk(event_data)
             accumulator.add(chunk)
             block&.call(chunk)
@@ -368,6 +375,13 @@ module RubyLLM
         # Send full message history (not just last message)
         def render_messages(messages)
           messages.map { |m| { role: m.role.to_s, content: m.content.to_s } }
+        end
+
+        def warn_unsupported_params(tools:, temperature:, schema:, thinking:)
+          warn "[ruby_llm-openclaw] tools: parameter ignored (OpenClaw manages tools server-side)" if tools&.any?
+          warn "[ruby_llm-openclaw] temperature: parameter ignored" if temperature
+          warn "[ruby_llm-openclaw] schema: parameter ignored" if schema
+          warn "[ruby_llm-openclaw] thinking: parameter ignored" if thinking
         end
       end
     end
@@ -537,7 +551,8 @@ end
 
 The Cora integration is a **separate concern** and should be a separate plan/PR after the gem ships. Key findings from the Rails review for when that plan is created:
 
-- Inherit from `AccountRecord` (not `ApplicationRecord`) — provides `acts_as_tenant` automatically
+- **Consider reusing `ConnectedAccount`** with `provider: "openclaw"` before creating a new table (DHH review)
+- If separate model: inherit from `AccountRecord` (not `ApplicationRecord`) — provides `acts_as_tenant` automatically
 - Add `has_prefix_id :oclw`
 - Add `belongs_to :account`
 - Use `:text` columns for encrypted attributes (ciphertext is longer than plaintext)
@@ -546,6 +561,27 @@ The Cora integration is a **separate concern** and should be a separate plan/PR 
 - Extract `to_llm_chat` to `OpenclawChatService < BaseService` (not on the model)
 - Add YARD documentation with examples
 - Create test fixtures
+
+### Multi-Tenant Config Injection Pattern
+
+Per-connection credentials must use `RubyLLM.context` (not the global singleton):
+
+```ruby
+# In OpenclawChatService
+def run
+  RubyLLM.context do |config|
+    config.openclaw_url = connection.url
+    config.openclaw_token = connection.token
+  end.chat(model: "openclaw/#{agent_name}", provider: :openclaw)
+end
+```
+
+This ensures each account's OpenClaw connection uses its own credentials without mutating global state.
+
+### Learnings That Apply
+- Follow the [Account-Scoped Feature Checklist](docs/solutions/best-practices/account-scoped-feature-checklist-20260216.md)
+- Follow the [Flipper Shadow Mode Pattern](docs/solutions/best-practices/flipper-shadow-mode-gradual-rollout-20250204.md)
+- [Verify lifecycle assumptions](docs/solutions/best-practices/verify-lifecycle-assumptions-before-approving-plans-20260225.md) before approving the Cora integration plan
 
 ## Sources & References
 
