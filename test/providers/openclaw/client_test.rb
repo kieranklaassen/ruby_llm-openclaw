@@ -153,6 +153,60 @@ class OpenClawClientTest < Minitest::Test
     client.send(:validate_token!, "valid-token-123")
   end
 
+  # -- Session key --
+
+  def test_build_session_key_format
+    client = build_client
+    key = client.send(:build_session_key, "my-agent")
+    assert_equal "agent:my-agent:main", key
+  end
+
+  # -- Content extraction --
+
+  def test_extract_content_from_string_message
+    client = build_client
+    assert_equal "hello", client.send(:extract_content, { "message" => "hello" })
+  end
+
+  def test_extract_content_from_hash_with_string_content
+    client = build_client
+    data = { "message" => { "content" => "hello" } }
+    assert_equal "hello", client.send(:extract_content, data)
+  end
+
+  def test_extract_content_from_hash_with_array_content_blocks
+    client = build_client
+    data = {
+      "message" => {
+        "role" => "assistant",
+        "content" => [
+          { "type" => "text", "text" => "Hello " },
+          { "type" => "text", "text" => "world!" }
+        ]
+      }
+    }
+    assert_equal "Hello world!", client.send(:extract_content, data)
+  end
+
+  def test_extract_content_skips_non_text_blocks
+    client = build_client
+    data = {
+      "message" => {
+        "content" => [
+          { "type" => "text", "text" => "Hello" },
+          { "type" => "image", "url" => "http://example.com/img.png" }
+        ]
+      }
+    }
+    assert_equal "Hello", client.send(:extract_content, data)
+  end
+
+  def test_extract_content_nil_message
+    client = build_client
+    assert_nil client.send(:extract_content, {})
+    assert_nil client.send(:extract_content, { "message" => nil })
+  end
+
   # -- Transport security --
 
   def test_warns_on_ws_to_non_loopback

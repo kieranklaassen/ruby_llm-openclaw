@@ -188,7 +188,10 @@ module RubyLLM
           write_message(connection, request)
 
           # Read streaming events
-          # Chat events: {"type":"event","event":"chat","payload":{"state":"delta"|"final"|"error",...}}
+          # Chat events contain accumulated content (not incremental deltas),
+          # so we track previous content and emit only the new portion.
+          accumulated = ""
+
           loop do
             msg = read_message(connection)
             break unless msg
@@ -202,13 +205,15 @@ module RubyLLM
 
               case state
               when "delta"
-                # Extract text content from the message field
-                content = extract_content(data)
-                block&.call(data.merge("content" => content)) if content
+                full_content = extract_content(data) || ""
+                new_content = full_content.delete_prefix(accumulated)
+                accumulated = full_content
+                block&.call(data.merge("content" => new_content)) unless new_content.empty?
               when "final"
-                content = extract_content(data)
-                if content
-                  block&.call(data.merge("content" => content, "usage" => data["usage"]))
+                full_content = extract_content(data) || ""
+                new_content = full_content.delete_prefix(accumulated)
+                unless new_content.empty?
+                  block&.call(data.merge("content" => new_content, "usage" => data["usage"]))
                 end
                 break
               when "error"
@@ -232,7 +237,15 @@ module RubyLLM
           when String
             msg
           when Hash
-            msg["content"] || msg["text"]
+            content = msg["content"]
+            case content
+            when String
+              content
+            when Array
+              content.filter_map { |block| block["text"] if block["type"] == "text" }.join
+            else
+              msg["text"]
+            end
           end
         end
 

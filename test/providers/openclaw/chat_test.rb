@@ -202,6 +202,15 @@ class OpenClawChatTest < Minitest::Test
     end
   end
 
+  def test_build_chunk_with_nil_content
+    events = [{ "model" => "gpt-4" }]
+
+    stub_client(events: events) do
+      result = call_complete([user_message("Hi")])
+      assert_nil result.content
+    end
+  end
+
   def test_build_chunk_model_id
     events = [{ "content" => "Hi", "model" => "claude-3" }]
 
