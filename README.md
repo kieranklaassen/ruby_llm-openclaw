@@ -21,22 +21,13 @@ Ruby 3.1+ required.
 Install and start the [OpenClaw](https://docs.openclaw.ai) Gateway:
 
 ```bash
-# Install
 npm install -g openclaw@latest
-
-# Initial setup (interactive wizard)
 openclaw onboard --install-daemon
-
-# Or start manually with token auth
-openclaw gateway --auth token --token YOUR_TOKEN
 ```
 
-The gateway listens on `ws://127.0.0.1:18789` by default. See [docs.openclaw.ai](https://docs.openclaw.ai/start/getting-started) for full setup.
+The wizard configures your LLM provider, gateway auth, and installs the daemon service. The gateway listens on `ws://127.0.0.1:18789` by default.
 
-**For remote gateways**, the host should:
-1. Start the gateway with `--auth token --token SHARED_SECRET`
-2. Expose the port via Tailscale, SSH tunnel, or VPN (keep off the public internet)
-3. Share the `wss://` URL and token with you
+See [docs/GATEWAY_SETUP.md](docs/GATEWAY_SETUP.md) for detailed setup, remote access, and non-interactive (server/CI) instructions.
 
 ## Configuration
 
