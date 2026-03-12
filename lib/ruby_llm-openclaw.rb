@@ -4,6 +4,7 @@
 require "digest"
 require "fileutils"
 require "securerandom"
+require "base64"
 
 # External dependencies
 require "ruby_llm"

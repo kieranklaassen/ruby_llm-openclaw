@@ -43,18 +43,31 @@ class OpenClawClientTest < Minitest::Test
 
   def test_reuses_existing_keypair
     client1 = build_client
-    pub1 = client1.send(:public_key_hex)
+    pub1 = client1.send(:public_key_base64url)
 
     client2 = build_client
-    pub2 = client2.send(:public_key_hex)
+    pub2 = client2.send(:public_key_base64url)
 
     assert_equal pub1, pub2, "Should reuse the same keypair"
   end
 
-  def test_device_id_is_sha256_of_public_key
+  def test_public_key_is_base64url_encoded
     client = build_client
-    pub_hex = client.send(:public_key_hex)
-    expected = Digest::SHA256.hexdigest([pub_hex].pack("H*"))
+    pub = client.send(:public_key_base64url)
+
+    # base64url: no +, /, or = characters
+    refute_match(/[+\/=]/, pub)
+
+    # Decodes to 32 bytes (Ed25519 public key)
+    raw = Base64.urlsafe_decode64(pub)
+    assert_equal 32, raw.bytesize
+  end
+
+  def test_device_id_is_sha256_of_raw_public_key
+    client = build_client
+    pub_b64 = client.send(:public_key_base64url)
+    raw_bytes = Base64.urlsafe_decode64(pub_b64)
+    expected = Digest::SHA256.hexdigest(raw_bytes)
 
     assert_equal expected, client.send(:device_id)
   end
@@ -70,7 +83,7 @@ class OpenClawClientTest < Minitest::Test
 
   # -- Signature --
 
-  def test_sign_payload_format
+  def test_sign_payload_format_v3
     client = build_client
     nonce = "test-nonce-uuid"
     token = "my-token"
@@ -79,30 +92,38 @@ class OpenClawClientTest < Minitest::Test
     payload = client.send(:build_signature_payload, nonce: nonce, token: token, signed_at_ms: signed_at_ms)
 
     parts = payload.split("|")
-    assert_equal "v2", parts[0]
+    client_class = RubyLLM::Providers::OpenClaw::Client
+
+    assert_equal 11, parts.size, "v3 payload has 11 pipe-delimited fields"
+    assert_equal "v3", parts[0]
     assert_equal client.send(:device_id), parts[1]
-    assert_equal "ruby_llm", parts[2]
-    assert_equal "provider", parts[3]
+    assert_equal "gateway-client", parts[2]
+    assert_equal client_class::CLIENT_MODE, parts[3]
     assert_equal "operator", parts[4]
     assert_equal "operator.read,operator.write", parts[5]
     assert_equal signed_at_ms.to_s, parts[6]
     assert_equal token, parts[7]
     assert_equal nonce, parts[8]
+    assert_equal client_class::CLIENT_PLATFORM, parts[9]
+    assert_equal client_class::CLIENT_DEVICE_FAMILY, parts[10]
   end
 
-  def test_sign_produces_valid_ed25519_signature
+  def test_sign_produces_valid_base64url_ed25519_signature
     client = build_client
     nonce = "test-nonce"
     token = "my-token"
     signed_at_ms = 1_700_000_000_000
 
     payload = client.send(:build_signature_payload, nonce: nonce, token: token, signed_at_ms: signed_at_ms)
-    signature_hex = client.send(:sign, payload)
+    signature_b64 = client.send(:sign, payload)
+
+    # Signature should be base64url (no +, /, or = characters)
+    refute_match(/[+\/=]/, signature_b64)
 
     # Verify with Ed25519
-    pub_hex = client.send(:public_key_hex)
-    verify_key = Ed25519::VerifyKey.new([pub_hex].pack("H*"))
-    signature_bytes = [signature_hex].pack("H*")
+    pub_b64 = client.send(:public_key_base64url)
+    verify_key = Ed25519::VerifyKey.new(Base64.urlsafe_decode64(pub_b64))
+    signature_bytes = Base64.urlsafe_decode64(signature_b64)
 
     # Should not raise
     verify_key.verify(signature_bytes, payload)

@@ -8,6 +8,11 @@ module RubyLLM
       class Client
         DEFAULT_KEY_PATH = File.join(Dir.home, ".ruby_llm", "openclaw", "device.key").freeze
         DEFAULT_TIMEOUT = 120
+        PROTOCOL_VERSION = 3
+        CLIENT_ID = "gateway-client"
+        CLIENT_MODE = "backend"
+        CLIENT_PLATFORM = RUBY_PLATFORM.downcase.freeze
+        CLIENT_DEVICE_FAMILY = "server"
 
         def initialize(config, key_path: DEFAULT_KEY_PATH)
           @url = config.openclaw_url
@@ -32,13 +37,13 @@ module RubyLLM
             task.with_timeout(@timeout) do
               Async::WebSocket::Client.connect(endpoint) do |connection|
                 authenticate(connection)
-                send_chat(connection, messages, agent: agent, &block)
+                send_chat(connection, messages, session_key: build_session_key(agent), &block)
               end
             end
           end
         rescue Async::TimeoutError => e
           raise OpenClaw::TimeoutError, "Gateway timeout: #{e.message}"
-        rescue Errno::ECONNREFUSED => e
+        rescue Errno::ECONNREFUSED, Errno::ECONNRESET, SocketError => e
           raise OpenClaw::ConnectionError, "Cannot connect to Gateway: #{e.message}"
         end
 
@@ -60,7 +65,6 @@ module RubyLLM
         def persist_key!
           dir = File.dirname(@key_path)
           FileUtils.mkdir_p(dir, mode: 0o700)
-          # Set directory permissions explicitly (mkdir_p may not respect mode on existing dirs)
           File.chmod(0o700, dir)
           File.open(@key_path, File::WRONLY | File::CREAT | File::EXCL, 0o600) do |f|
             f.write(@signing_key.seed)
@@ -75,8 +79,8 @@ module RubyLLM
                                "Expected 0600. Fix with: chmod 600 #{@key_path}"
         end
 
-        def public_key_hex
-          @signing_key.verify_key.to_bytes.unpack1("H*")
+        def public_key_base64url
+          Base64.urlsafe_encode64(@signing_key.verify_key.to_bytes, padding: false)
         end
 
         def device_id
@@ -84,34 +88,37 @@ module RubyLLM
         end
 
         def sign(payload)
-          @signing_key.sign(payload).unpack1("H*")
+          Base64.urlsafe_encode64(@signing_key.sign(payload), padding: false)
         end
 
         def build_signature_payload(nonce:, token:, signed_at_ms:)
           [
-            "v2",
+            "v3",
             device_id,
-            "ruby_llm",
-            "provider",
+            CLIENT_ID,
+            CLIENT_MODE,
             "operator",
             "operator.read,operator.write",
             signed_at_ms.to_s,
             token,
-            nonce
+            nonce,
+            CLIENT_PLATFORM,
+            CLIENT_DEVICE_FAMILY
           ].join("|")
         end
 
         # -- Authentication --
 
         def authenticate(connection)
-          # Read challenge
+          # Server sends: {"type":"event","event":"connect.challenge","payload":{"nonce":"...","ts":...}}
           challenge = read_message(connection)
-          raise OpenClaw::AuthenticationError, "Expected connect.challenge" unless challenge&.dig("method") == "connect.challenge"
+          unless challenge&.dig("type") == "event" && challenge&.dig("event") == "connect.challenge"
+            raise OpenClaw::AuthenticationError, "Expected connect.challenge, got: #{challenge}"
+          end
 
-          nonce = challenge.dig("params", "nonce")
+          nonce = challenge.dig("payload", "nonce")
           raise OpenClaw::AuthenticationError, "No nonce in challenge" unless nonce
 
-          # Build and send connect message
           signed_at_ms = (Time.now.to_f * 1000).to_i
           payload = build_signature_payload(nonce: nonce, token: @token, signed_at_ms: signed_at_ms)
           signature = sign(payload)
@@ -121,63 +128,111 @@ module RubyLLM
             id: SecureRandom.uuid,
             method: "connect",
             params: {
+              minProtocol: PROTOCOL_VERSION,
+              maxProtocol: PROTOCOL_VERSION,
+              client: {
+                id: CLIENT_ID,
+                version: VERSION,
+                platform: CLIENT_PLATFORM,
+                mode: CLIENT_MODE,
+                deviceFamily: CLIENT_DEVICE_FAMILY
+              },
+              role: "operator",
+              scopes: ["operator.read", "operator.write"],
+              caps: [],
+              auth: { token: @token },
               device: {
                 id: device_id,
-                publicKey: public_key_hex,
+                publicKey: public_key_base64url,
                 signature: signature,
                 signedAt: signed_at_ms,
                 nonce: nonce
-              },
-              auth: { token: @token },
-              role: "operator",
-              scopes: ["operator.read", "operator.write"]
+              }
             }
           }
 
           write_message(connection, connect_msg)
 
-          # Read hello-ok
+          # Server sends: {"type":"res","id":"...","ok":true,"payload":{"type":"hello-ok",...}}
           hello = read_message(connection)
-          raise OpenClaw::AuthenticationError, "Authentication failed: #{hello}" unless hello&.dig("method") == "hello-ok"
+          unless hello&.dig("type") == "res" && hello&.dig("ok") == true
+            error_msg = hello&.dig("error", "message") || hello.to_s
+            raise OpenClaw::AuthenticationError, "Authentication failed: #{error_msg}"
+          end
+        end
+
+        # -- Sessions --
+
+        def build_session_key(agent)
+          "agent:#{agent}:main"
         end
 
         # -- Chat --
 
-        def send_chat(connection, messages, agent:, &block)
+        def send_chat(connection, messages, session_key:, &block)
+          # Format messages into a single string for chat.send
+          # The Gateway expects `message` as a string, not an array
+          message_text = messages.last&.dig(:content) || messages.last&.dig("content") || ""
+
           request = {
             type: "req",
             id: SecureRandom.uuid,
             method: "chat.send",
             params: {
-              agent: agent,
-              messages: messages
+              sessionKey: session_key,
+              message: message_text,
+              idempotencyKey: SecureRandom.uuid
             }
           }
 
           write_message(connection, request)
 
           # Read streaming events
+          # Chat events: {"type":"event","event":"chat","payload":{"state":"delta"|"final"|"error",...}}
           loop do
             msg = read_message(connection)
             break unless msg
 
             case msg["type"]
             when "event"
-              event = msg["event"]
-              data = msg["payload"] || msg["data"] || {}
+              next unless msg["event"] == "chat"
 
-              case event
-              when "chat.token", "chat.chunk"
-                block&.call(data)
-              when "chat.done", "chat.complete"
-                block&.call(data) if data["content"] || data["text"]
+              data = msg["payload"] || {}
+              state = data["state"]
+
+              case state
+              when "delta"
+                # Extract text content from the message field
+                content = extract_content(data)
+                block&.call(data.merge("content" => content)) if content
+              when "final"
+                content = extract_content(data)
+                if content
+                  block&.call(data.merge("content" => content, "usage" => data["usage"]))
+                end
                 break
-              when "chat.error"
-                raise OpenClaw::Error, data["message"] || "Chat error"
+              when "error"
+                raise OpenClaw::Error, data["errorMessage"] || "Chat error"
+              when "aborted"
+                break
               end
-            when "error"
-              raise OpenClaw::Error, msg["message"] || "Gateway error"
+            when "res"
+              # Response to chat.send request (ack) — continue reading events
+              unless msg["ok"]
+                error_msg = msg.dig("error", "message") || "chat.send failed"
+                raise OpenClaw::Error, error_msg
+              end
             end
+          end
+        end
+
+        def extract_content(data)
+          msg = data["message"]
+          case msg
+          when String
+            msg
+          when Hash
+            msg["content"] || msg["text"]
           end
         end
 
