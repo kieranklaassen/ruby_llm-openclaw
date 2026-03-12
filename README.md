@@ -16,6 +16,28 @@ gem "ruby_llm-openclaw"
 
 Ruby 3.1+ required.
 
+## Prerequisites: OpenClaw Gateway
+
+Install and start the [OpenClaw](https://docs.openclaw.ai) Gateway:
+
+```bash
+# Install
+npm install -g openclaw@latest
+
+# Initial setup (interactive wizard)
+openclaw onboard --install-daemon
+
+# Or start manually with token auth
+openclaw gateway --auth token --token YOUR_TOKEN
+```
+
+The gateway listens on `ws://127.0.0.1:18789` by default. See [docs.openclaw.ai](https://docs.openclaw.ai/start/getting-started) for full setup.
+
+**For remote gateways**, the host should:
+1. Start the gateway with `--auth token --token SHARED_SECRET`
+2. Expose the port via Tailscale, SSH tunnel, or VPN (keep off the public internet)
+3. Share the `wss://` URL and token with you
+
 ## Configuration
 
 ```ruby
@@ -27,24 +49,9 @@ end
 
 The default URL is `ws://localhost:18789`.
 
-## Discovery
-
-Fetch available claws from a Gateway. Results are not persisted — store them however you like.
-
-```ruby
-# Using global config
-claws = RubyLLM::Providers::OpenClaw.list_claws
-
-# Using specific credentials
-claws = RubyLLM::Providers::OpenClaw.list_claws(
-  url: "wss://tenant1.example.com:18789",
-  token: "secret"
-)
-```
-
-Any `openclaw/` model ID works without discovery — claws resolve on demand.
-
 ## Usage
+
+Any `openclaw/` model ID works — agents resolve on demand.
 
 Use the Gateway's default claw or specify one by name.
 
@@ -71,19 +78,6 @@ chat = RubyLLM.chat(model: "openclaw/my-agent")
 chat.ask("Summarize my inbox")
 chat.ask("What about last week?")
 ```
-
-### Per-Connection Credentials
-
-Override the global URL and token per chat with `with_connection`.
-
-```ruby
-chat = RubyLLM.chat(model: "openclaw/my-agent")
-  .with_connection(url: "wss://tenant1.example.com:18789", token: "secret")
-
-chat.ask("Summarize my inbox")
-```
-
-Falls back to the global configuration when not set.
 
 ## How It Works
 

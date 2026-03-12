@@ -75,8 +75,8 @@ module RubyLLM
           stat = File.stat(@key_path)
           return if stat.mode & 0o077 == 0
 
-          raise SecurityError, "#{@key_path} has insecure permissions #{format('%04o', stat.mode & 0o777)}. " \
-                               "Expected 0600. Fix with: chmod 600 #{@key_path}"
+          raise OpenClaw::KeyPermissionError, "#{@key_path} has insecure permissions #{format('%04o', stat.mode & 0o777)}. " \
+                                            "Expected 0600. Fix with: chmod 600 #{@key_path}"
         end
 
         def public_key_base64url

@@ -12,6 +12,7 @@ module RubyLLM
       class ConnectionError < Error; end
       class AuthenticationError < Error; end
       class TimeoutError < Error; end
+      class KeyPermissionError < Error; end
 
       # Override initialize to skip Faraday Connection creation.
       # Base Provider#initialize creates Connection.new(self, @config) which

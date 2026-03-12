@@ -76,7 +76,7 @@ class OpenClawClientTest < Minitest::Test
     build_client
     File.chmod(0o644, key_path)
 
-    assert_raises(SecurityError) do
+    assert_raises(RubyLLM::Providers::OpenClaw::KeyPermissionError) do
       build_client
     end
   end
