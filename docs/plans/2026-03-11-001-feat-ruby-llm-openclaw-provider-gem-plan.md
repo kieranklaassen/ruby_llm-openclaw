@@ -1,7 +1,7 @@
 ---
 title: "feat: RubyLLM OpenClaw provider gem"
 type: feat
-status: active
+status: completed
 date: 2026-03-11
 deepened: 2026-03-12
 origin: docs/brainstorms/2026-03-11-ruby-llm-openclaw-provider-brainstorm.md
@@ -463,19 +463,19 @@ rescue Errno::ECONNREFUSED => e
 ## Acceptance Criteria
 
 ### Functional
-- [ ] `RubyLLM.chat(model: "openclaw/agent-name").ask("hello")` returns a response
-- [ ] Streaming works: `chat.ask("hello") { |chunk| ... }` yields chunks
-- [ ] Multi-turn: second `.ask()` sends full conversation history
-- [ ] Ed25519 handshake completes successfully against real OpenClaw instance
-- [ ] Device keypair auto-generated with 0600 permissions and persisted on first connection
-- [ ] Provider registered and discoverable via `RubyLLM::Provider.resolve(:openclaw)`
+- [x] `RubyLLM.chat(model: "openclaw/agent-name").ask("hello")` returns a response
+- [x] Streaming works: `chat.ask("hello") { |chunk| ... }` yields chunks
+- [x] Multi-turn: second `.ask()` sends full conversation history
+- [x] Ed25519 handshake completes successfully against real OpenClaw instance
+- [x] Device keypair auto-generated with 0600 permissions and persisted on first connection
+- [x] Provider registered and discoverable via `RubyLLM::Provider.resolve(:openclaw)`
 
 ### Non-Functional
-- [ ] Timeout handling for unresponsive Gateway (configurable, default 120s)
-- [ ] Warns on `ws://` to non-loopback addresses
-- [ ] No libsodium system dependency (uses `ed25519` gem)
-- [ ] No ActiveRecord calls inside `Sync` blocks
-- [ ] Minitest test suite passing
+- [x] Timeout handling for unresponsive Gateway (configurable, default 120s)
+- [x] Warns on `ws://` to non-loopback addresses
+- [x] No libsodium system dependency (uses `ed25519` gem)
+- [x] No ActiveRecord calls inside `Sync` blocks
+- [x] Minitest test suite passing
 
 ### Deferred to v2 (explicitly out of scope)
 - [ ] Connection pooling / reuse (measure latency first)
