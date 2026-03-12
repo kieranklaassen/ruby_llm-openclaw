@@ -1,0 +1,9 @@
+Gemfile.lock
+*.gem
+.bundle/
+pkg/
+tmp/
+coverage/
+doc/
+.yardoc
+.byebug_history
