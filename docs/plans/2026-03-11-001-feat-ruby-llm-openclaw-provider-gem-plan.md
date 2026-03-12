@@ -564,19 +564,17 @@ The Cora integration is a **separate concern** and should be a separate plan/PR 
 
 ### Multi-Tenant Config Injection Pattern
 
-Per-connection credentials must use `RubyLLM.context` (not the global singleton):
+Per-connection credentials use `with_connection` on Chat (not `RubyLLM.context`):
 
 ```ruby
 # In OpenclawChatService
 def run
-  RubyLLM.context do |config|
-    config.openclaw_url = connection.url
-    config.openclaw_token = connection.token
-  end.chat(model: "openclaw/#{agent_name}", provider: :openclaw)
+  RubyLLM.chat(model: "openclaw/#{agent_name}")
+    .with_connection(url: connection.url, token: connection.token)
 end
 ```
 
-This ensures each account's OpenClaw connection uses its own credentials without mutating global state.
+Global config is the default for single-tenant/dev. `with_connection` overrides per chat for multi-tenant. Implemented by monkey-patching `RubyLLM::Chat` to store `@openclaw_url` and `@openclaw_token`, read by `complete` with fallback to `@config`.
 
 ### Learnings That Apply
 - Follow the [Account-Scoped Feature Checklist](docs/solutions/best-practices/account-scoped-feature-checklist-20260216.md)
