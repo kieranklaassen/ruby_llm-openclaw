@@ -100,7 +100,7 @@ module RubyLLM
 
         def build_signature_payload(nonce:, token:, signed_at_ms:)
           [
-            "v3",
+            "v2",
             device_id,
             CLIENT_ID,
             CLIENT_MODE,
@@ -108,9 +108,7 @@ module RubyLLM
             "operator.read,operator.write",
             signed_at_ms.to_s,
             token,
-            nonce,
-            CLIENT_PLATFORM,
-            CLIENT_DEVICE_FAMILY
+            nonce
           ].join("|")
         end
 
