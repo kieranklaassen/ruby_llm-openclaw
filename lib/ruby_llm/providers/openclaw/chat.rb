@@ -7,7 +7,8 @@ module RubyLLM
         def complete(messages, tools:, temperature:, model:, params: {}, headers: {}, schema: nil, thinking: nil, tool_prefs: nil, &block) # rubocop:disable Metrics/ParameterLists,Lint/UnusedMethodArgument
           warn_unsupported_params(tools: tools, temperature: temperature, schema: schema, thinking: thinking)
 
-          client = Client.new(@config)
+          signing_key = @config.respond_to?(:openclaw_signing_key) ? @config.openclaw_signing_key : nil
+          client = Client.new(@config, signing_key: signing_key)
           accumulator = RubyLLM::StreamAccumulator.new
           agent_name = model.id.delete_prefix("openclaw/")
 

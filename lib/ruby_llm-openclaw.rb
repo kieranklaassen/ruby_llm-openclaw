@@ -21,7 +21,7 @@ require_relative "ruby_llm/providers/openclaw"
 
 # Configuration extension
 RubyLLM::Configuration.class_eval do
-  attr_accessor :openclaw_url, :openclaw_token
+  attr_accessor :openclaw_url, :openclaw_token, :openclaw_signing_key
 end
 
 # Set defaults
