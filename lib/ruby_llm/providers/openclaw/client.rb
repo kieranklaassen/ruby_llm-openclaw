@@ -14,7 +14,10 @@ module RubyLLM
         CLIENT_PLATFORM = RUBY_PLATFORM.downcase.freeze
         CLIENT_DEVICE_FAMILY = "server"
 
-        def initialize(config, key_path: DEFAULT_KEY_PATH)
+        # @param config [#openclaw_url, #openclaw_token] configuration with URL and token
+        # @param key_path [String] filesystem path for device key (used when signing_key is nil)
+        # @param signing_key [String, nil] 32-byte Ed25519 seed for in-memory key (bypasses filesystem)
+        def initialize(config, key_path: DEFAULT_KEY_PATH, signing_key: nil)
           @url = config.openclaw_url
           @token = config.openclaw_token
           @timeout = config.respond_to?(:request_timeout) ? (config.request_timeout || DEFAULT_TIMEOUT) : DEFAULT_TIMEOUT
@@ -22,7 +25,12 @@ module RubyLLM
 
           warn_insecure_transport!
           validate_token!(@token)
-          load_or_generate_keypair!
+
+          if signing_key
+            @signing_key = Ed25519::SigningKey.new(signing_key)
+          else
+            load_or_generate_keypair!
+          end
         end
 
         def chat_send(messages, agent:, &block)
@@ -66,9 +74,8 @@ module RubyLLM
           dir = File.dirname(@key_path)
           FileUtils.mkdir_p(dir, mode: 0o700)
           File.chmod(0o700, dir)
-          File.open(@key_path, File::WRONLY | File::CREAT | File::EXCL, 0o600) do |f|
-            f.write(@signing_key.seed)
-          end
+          File.binwrite(@key_path, @signing_key.seed)
+          File.chmod(0o600, @key_path)
         end
 
         def validate_key_permissions!
@@ -260,7 +267,9 @@ module RubyLLM
           message = connection.read
           return nil unless message
 
-          JSON.parse(message.to_str)
+          raw = message.to_str
+          raw = raw.dup.force_encoding("UTF-8") unless raw.encoding == Encoding::UTF_8
+          JSON.parse(raw)
         end
 
         # -- Validation --
