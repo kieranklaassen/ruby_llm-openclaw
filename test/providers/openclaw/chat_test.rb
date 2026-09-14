@@ -45,8 +45,8 @@ class OpenClawChatTest < Minitest::Test
     stub_client(events: events) do
       result = call_complete([user_message("Hi")])
 
-      assert_equal 10, result.input_tokens
-      assert_equal 5, result.output_tokens
+      assert_equal 10, result.tokens.input
+      assert_equal 5, result.tokens.output
     end
   end
 
@@ -216,7 +216,7 @@ class OpenClawChatTest < Minitest::Test
 
     stub_client(events: events) do
       result = call_complete([user_message("Hi")])
-      assert_equal "claude-3", result.model_id
+      assert_equal "claude-3", result.model
     end
   end
 
@@ -225,7 +225,7 @@ class OpenClawChatTest < Minitest::Test
 
     stub_client(events: events) do
       result = call_complete([user_message("Hi")])
-      assert_equal "openclaw", result.model_id
+      assert_equal "openclaw", result.model
     end
   end
 

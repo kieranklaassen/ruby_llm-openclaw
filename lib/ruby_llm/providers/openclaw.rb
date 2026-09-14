@@ -35,6 +35,10 @@ module RubyLLM
         []
       end
 
+      def preprocess_message(message, **)
+        message
+      end
+
       class << self
         def configuration_requirements
           %i[openclaw_url openclaw_token]

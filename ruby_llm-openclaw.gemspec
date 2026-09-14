@@ -17,7 +17,7 @@ Gem::Specification.new do |spec|
   spec.files = Dir["*.{md,txt}", "{lib}/**/*"]
   spec.require_path = "lib"
 
-  spec.add_dependency "ruby_llm", ">= 1.12"
+  spec.add_dependency "ruby_llm", ">= 2.0.0.rc3", "< 3"
   spec.add_dependency "async-websocket", "~> 0.30"
   spec.add_dependency "ed25519", "~> 1.3"
 end

@@ -14,7 +14,7 @@ Add this line to your application's **Gemfile**:
 gem "ruby_llm-openclaw"
 ```
 
-Ruby 3.1+ required.
+Ruby 3.1+ and RubyLLM 2.0.0.rc3+ (below 3.0) required.
 
 ## Prerequisites: OpenClaw Gateway
 
@@ -42,16 +42,17 @@ The default URL is `ws://localhost:18789`.
 
 ## Usage
 
-Any `openclaw/` model ID works — agents resolve on demand.
+Any `openclaw/` model ID works — agents resolve on demand. RubyLLM 2 requires
+the provider to be explicit for models that are not in its registry.
 
 Use the Gateway's default claw or specify one by name.
 
 ```ruby
 # Default claw
-chat = RubyLLM.chat(model: "openclaw")
+chat = RubyLLM.chat(model: "openclaw", provider: :openclaw)
 
 # Specific claw
-chat = RubyLLM.chat(model: "openclaw/my-agent")
+chat = RubyLLM.chat(model: "openclaw/my-agent", provider: :openclaw)
 ```
 
 ### Streaming
@@ -65,7 +66,7 @@ chat.ask("Summarize my inbox") { |chunk| print chunk.content }
 Full message history is sent on each request.
 
 ```ruby
-chat = RubyLLM.chat(model: "openclaw/my-agent")
+chat = RubyLLM.chat(model: "openclaw/my-agent", provider: :openclaw)
 chat.ask("Summarize my inbox")
 chat.ask("What about last week?")
 ```

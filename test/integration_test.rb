@@ -3,6 +3,16 @@
 require "test_helper"
 
 class IntegrationTest < Minitest::Test
+  def test_ruby_llm_chat_flow
+    configure_openclaw do
+      stub_client(events: [{ "content" => "Hello from OpenClaw!", "model" => "openclaw" }]) do
+        result = RubyLLM.chat(model: "openclaw/my-agent", provider: :openclaw).ask("Hello")
+
+        assert_equal "Hello from OpenClaw!", result.content
+      end
+    end
+  end
+
   def test_full_sync_flow
     configure_openclaw do
       stub_client(events: [
@@ -21,9 +31,9 @@ class IntegrationTest < Minitest::Test
         assert_instance_of RubyLLM::Message, result
         assert_equal :assistant, result.role
         assert_equal "Hello from OpenClaw!", result.content
-        assert_equal "gpt-4.1", result.model_id
-        assert_equal 12, result.input_tokens
-        assert_equal 6, result.output_tokens
+        assert_equal "gpt-4.1", result.model
+        assert_equal 12, result.tokens.input
+        assert_equal 6, result.tokens.output
       end
     end
   end
